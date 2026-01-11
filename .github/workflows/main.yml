@@ -1,0 +1,51 @@
+name: WRDP
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *"   # every 6 hours backup trigger
+
+jobs:
+  rdp:
+    runs-on: windows-latest
+    timeout-minutes: 355   # ~6 hours
+
+    steps:
+    - name: Create User
+      run: |
+        net user Ariyan Ariyan@123 /add
+        net localgroup administrators Ariyan /add
+
+    - name: Enable RDP
+      run: |
+        Set-ItemProperty "HKLM:\System\CurrentControlSet\Control\Terminal Server" `
+        -Name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+    - name: Install Tailscale
+      run: |
+        Invoke-WebRequest https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe -OutFile ts.exe
+        Start-Process ts.exe -ArgumentList "/quiet" -Wait
+
+    - name: Connect Tailscale
+      env:
+        TSKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+      run: |
+        & "C:\Program Files\Tailscale\tailscale.exe" up `
+        --authkey=$env:TSKEY `
+        --hostname=ariyan-github-rdp `
+        --accept-dns
+
+    - name: Show IP
+      run: |
+        & "C:\Program Files\Tailscale\tailscale.exe" ip -4
+
+    - name: Keep Alive (6h)
+      run: |
+        Write-Host "RDP READY – Ariyan / Ariyan@123"
+        Start-Sleep -Seconds 21000   # ~5.8 hours
+
+    - name: Auto Restart Workflow
+      if: always()
+      run: |
+        gh workflow run rdp.yml
