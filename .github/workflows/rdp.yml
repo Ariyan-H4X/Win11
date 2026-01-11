@@ -1,0 +1,55 @@
+name: Windows
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *"
+
+jobs:
+  rdp:
+    runs-on: windows-latest
+    timeout-minutes: 355
+
+    steps:
+    - name: Create RDP User
+      run: |
+        net user Ariyan "Ariyan@123#Win" /add
+        net localgroup administrators Ariyan /add
+
+    - name: Enable RDP
+      run: |
+        Set-ItemProperty "HKLM:\System\CurrentControlSet\Control\Terminal Server" `
+          -Name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+    - name: Install Tailscale
+      run: |
+        Invoke-WebRequest https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe -OutFile ts.exe
+        Start-Process ts.exe -ArgumentList "/quiet" -Wait
+
+    - name: Connect Tailscale
+      env:
+        TSKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+      run: |
+        & "C:\Program Files\Tailscale\tailscale.exe" up `
+          --authkey=$env:TSKEY `
+          --hostname=ariyan-github-rdp `
+          --accept-dns
+
+    - name: Show Tailscale IP
+      run: |
+        & "C:\Program Files\Tailscale\tailscale.exe" ip -4
+
+    - name: Keep Alive (6h)
+      run: |
+        Write-Host "RDP READY"
+        Write-Host "User: Ariyan"
+        Write-Host "Pass: Ariyan@123#Win"
+        Start-Sleep -Seconds 21000
+
+    - name: Auto Restart Workflow
+      if: always()
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh workflow run rdp.yml
